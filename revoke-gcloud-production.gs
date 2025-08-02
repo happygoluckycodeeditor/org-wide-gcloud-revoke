@@ -71,7 +71,7 @@ function debugApiAccess() {
     Logger.log('Response type: %s', typeof response);
     
     if (response.users) {
-      Logger.log('✓ Found %s users', response.users.length);
+      Logger.log('✓ Found %s users', parseInt(response.users.length));
       response.users.forEach((user, index) => {
         Logger.log('  %s. %s', index + 1, user.primaryEmail);
       });
@@ -110,9 +110,7 @@ function checkAdminPrivileges() {
     
     // Try to get information about the current user
     const userInfo = AdminDirectory.Users.get(currentUser);
-    Logger.log('✓ Can access user info for current user');
-    Logger.log('User info: %s', JSON.stringify(userInfo, null, 2));
-    
+    Logger.log('✓ Can access user info for current user');    
   } catch (error) {
     Logger.log('❌ Cannot access user info: %s', error.toString());
     Logger.log('This suggests insufficient admin privileges');
@@ -207,40 +205,31 @@ function listUsersAndInvalidate(dryRun = false, maxUsers = MAX_USERS_TO_PROCESS)
           continue;
         }
         
-        Logger.log('  Found %s OAuth token(s) for user: %s', tokens.length, user.primaryEmail);
-        
-        let userHasGcloudToken = false;
-        let gcloudTokensCount = 0;
-        
-        // Check each token to find gcloud CLI tokens
-        for (const token of tokens) {
-          Logger.log('  Token client ID: %s', token.clientId);
-          
-          // Check if this is a gcloud CLI token
-          if (token.clientId === GCLOUD_CLIENT_ID) {
-            userHasGcloudToken = true;
-            gcloudTokensCount++;
-            
-            if (dryRun) {
-              Logger.log('  [DRY RUN] Would revoke gcloud token for: %s', user.primaryEmail);
-            } else {
-              // Actually revoke the token
-              AdminDirectory.Tokens.remove(user.primaryEmail, token.clientId);
-              Logger.log('  ✓ Revoked gcloud token for: %s', user.primaryEmail);
-              stats.tokensRevoked++;
-            }
+        // Filter for gcloud CLI tokens first
+        const gcloudTokens = tokens ? tokens.filter(token => token.clientId === GCLOUD_CLIENT_ID) : [];
+
+        if (gcloudTokens.length === 0) {
+          Logger.log('  No gcloud CLI OAuth tokens found for user: %s', user.primaryEmail);
+          continue;
+        }
+
+        Logger.log('  Found %s gcloud CLI OAuth token(s) for user: %s', gcloudTokens.length, user.primaryEmail);
+
+        gcloudTokens.forEach(token => {
+          if (dryRun) {
+            Logger.log('  [DRY RUN] Would revoke gcloud token for: %s', user.primaryEmail);
+          } else {
+            AdminDirectory.Tokens.remove(user.primaryEmail, token.clientId);
+            Logger.log('  ✓ Revoked gcloud token for: %s', user.primaryEmail);
+            stats.tokensRevoked++;
           }
-        }
-        
-        if (userHasGcloudToken) {
-          stats.usersWithGcloudTokens++;
-          stats.userDetails.push({
-            email: user.primaryEmail,
-            gcloudTokensCount: gcloudTokensCount
-          });
-        } else {
-          Logger.log('  No gcloud tokens found for user: %s', user.primaryEmail);
-        }
+        });
+
+        stats.usersWithGcloudTokens++;
+        stats.userDetails.push({
+          email: user.primaryEmail,
+          gcloudTokensCount: gcloudTokens.length
+        });
         
       } catch (userError) {
         stats.errors++;
