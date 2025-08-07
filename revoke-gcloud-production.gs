@@ -71,7 +71,7 @@ function debugApiAccess() {
     Logger.log('Response type: %s', typeof response);
     
     if (response.users) {
-      Logger.log('✓ Found %s users', parseInt(response.users.length));
+      Logger.log('✓ Found %s users', response.users.length);
       response.users.forEach((user, index) => {
         Logger.log('  %s. %s', index + 1, user.primaryEmail);
       });
